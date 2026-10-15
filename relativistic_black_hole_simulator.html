@@ -1,0 +1,1581 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>GARGANTUA // Relativistic Black Hole Simulator</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Three.js for WebGL Shader & 3D Math -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- Google Fonts: Inter & JetBrains Mono -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --accent: #f59e0b;
+            --accent-glow: rgba(245, 158, 11, 0.35);
+        }
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #03050a;
+            font-family: 'Inter', sans-serif;
+            color: #f8fafc;
+        }
+        .font-mono-tech {
+            font-family: 'JetBrains Mono', monospace;
+        }
+        /* Glassmorphism HUD panels */
+        .hud-panel {
+            background: rgba(9, 13, 24, 0.72);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.09);
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+        }
+        /* Custom Range Sliders */
+        input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%;
+            height: 6px;
+            background: rgba(255, 255, 255, 0.12);
+            border-radius: 999px;
+            outline: none;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #fbbf24;
+            cursor: pointer;
+            box-shadow: 0 0 12px rgba(251, 191, 36, 0.8);
+            border: 2px solid #fff;
+            transition: transform 0.15s ease;
+        }
+        input[type="range"]::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+        }
+        /* Custom Scrollbar for Control Drawer */
+        .custom-scroll::-webkit-scrollbar {
+            width: 5px;
+        }
+        .custom-scroll::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .custom-scroll::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.18);
+            border-radius: 999px;
+        }
+        .mode-btn.active {
+            background: linear-gradient(135deg, rgba(245, 158, 11, 0.28), rgba(217, 119, 6, 0.15));
+            border-color: rgba(251, 191, 36, 0.75);
+            color: #fef3c7;
+            box-shadow: 0 0 20px rgba(245, 158, 11, 0.25);
+        }
+        @keyframes pulseGlow {
+            0%, 100% { opacity: 0.6; }
+            50% { opacity: 1.0; }
+        }
+        .pulse-indicator {
+            animation: pulseGlow 2.4s infinite ease-in-out;
+        }
+    </style>
+</head>
+<body class="relative w-full h-full select-none overflow-hidden">
+
+    <!-- WebGL Raymarching Canvas (Background Layer) -->
+    <canvas id="glCanvas" class="absolute inset-0 w-full h-full block z-0"></canvas>
+
+    <!-- 2D Interactive Relativistic Geodesic & HUD Overlay Canvas -->
+    <canvas id="overlayCanvas" class="absolute inset-0 w-full h-full block z-10 cursor-grab active:cursor-grabbing"></canvas>
+
+    <!-- TOP BAR: Observatory Header & Live Relativistic Telemetry -->
+    <header class="absolute top-3 left-3 right-3 z-20 flex flex-wrap items-center justify-between gap-2 pointer-events-none">
+        <!-- Brand / Title -->
+        <div class="hud-panel rounded-2xl px-4 py-2.5 flex items-center gap-3 pointer-events-auto">
+            <div class="relative flex items-center justify-center w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/30">
+                <svg class="w-5 h-5 text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="4" fill="currentColor" />
+                    <ellipse cx="12" cy="12" rx="10" ry="4" transform="rotate(-25 12 12)" />
+                    <path d="M4.5 9.5C7 5.5 13 4 17.5 6.5" stroke-linecap="round"/>
+                </svg>
+                <span class="
+                    absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-amber-400 pulse-indicator
+                "></span>
+            </div>
+            <div>
+                <div class="flex items-center gap-2">
+                    <h1 class="text-sm sm:text-base font-bold tracking-wider text-white uppercase">Gargantua</h1>
+                    <span class="text-[10px] font-mono-tech uppercase px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">Kerr-Newman Metric</span>
+                </div>
+                <p class="text-[11px] text-slate-400 hidden sm:block">Real-Time General Relativistic Raymarcher & Geodesic Sandbox</p>
+            </div>
+        </div>
+
+        <!-- Live Telemetry Strip -->
+        <div class="hud-panel rounded-2xl px-3.5 py-2 flex items-center gap-4 sm:gap-6 pointer-events-auto overflow-x-auto max-w-full">
+            <div>
+                <div class="text-[10px] uppercase tracking-wider text-slate-400">Observer Dist</div>
+                <div id="telDistance" class="text-xs sm:text-sm font-mono-tech font-semibold text-amber-300">18.0 Rₛ</div>
+            </div>
+            <div class="h-6 w-px bg-white/10"></div>
+            <div>
+                <div class="text-[10px] uppercase tracking-wider text-slate-400">Time Dilation (γ)</div>
+                <div id="telTimeDilation" class="text-xs sm:text-sm font-mono-tech font-semibold text-cyan-300">1.029x</div>
+            </div>
+            <div class="h-6 w-px bg-white/10"></div>
+            <div>
+                <div class="text-[10px] uppercase tracking-wider text-slate-400">Escape Vel</div>
+                <div id="telEscapeVel" class="text-xs sm:text-sm font-mono-tech font-semibold text-rose-300">0.236 c</div>
+            </div>
+            <div class="h-6 w-px bg-white/10 hidden md:block"></div>
+            <div class="hidden md:block">
+                <div class="text-[10px] uppercase tracking-wider text-slate-400">Orbiting Bodies</div>
+                <div id="telParticles" class="text-xs sm:text-sm font-mono-tech font-semibold text-emerald-300">0 Active</div>
+            </div>
+            <div class="h-6 w-px bg-white/10"></div>
+            <!-- Audio Synth Toggle -->
+            <button id="audioToggleBtn" class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs text-slate-300 transition" title="Toggle Relativistic Gravitational Audio">
+                <svg id="audioIconOff" class="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
+                </svg>
+                <svg id="audioIconOn" class="w-4 h-4 text-amber-400 hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                </svg>
+                <span id="audioLabel" class="hidden sm:inline">Audio Off</span>
+            </button>
+            <!-- Toggle Settings Drawer Button (Mobile/Tablet friendly) -->
+            <button id="toggleDrawerBtn" class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-xs text-amber-200 font-medium transition">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+                </svg>
+                <span>Controls</span>
+            </button>
+        </div>
+    </header>
+
+    <!--Toast / Event Notification Banner -->
+    <div id="eventBanner" class="fixed top-20 left-1/2 -translate-x-1/2 z-30 pointer-events-none transition-all duration-300 opacity-0 -translate-y-2">
+        <div class="hud-panel rounded-full px-4 py-1.5 flex items-center gap-2 border border-amber-400/40 shadow-lg">
+            <span class="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span>
+            <span id="eventBannerText" class="text-xs font-mono-tech text-amber-200">Tidal Disruption Event Detected!</span>
+        </div>
+    </div>
+
+    <!-- RIGHT PANEL: Relativistic Parameters & Camera Presets -->
+    <aside id="controlDrawer" class="fixed top-20 right-3 bottom-24 w-80 max-w-[calc(100vw-1.5rem)] z-20 hud-panel rounded-2xl p-4 flex flex-col justify-between transition-transform duration-300 translate-x-0">
+        <div class="flex items-center justify-between border-b border-white/10 pb-3 mb-3">
+            <div class="flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full bg-amber-400"></span>
+                <h2 class="text-xs font-bold uppercase tracking-wider text-slate-200">Spacetime Parameters</h2>
+            </div>
+            <button id="closeDrawerBtn" class="text-slate-400 hover:text-white p-1 rounded-lg">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
+        </div>
+
+        <!-- Scrollable Controls Area -->
+        <div class="custom-scroll overflow-y-auto pr-1 space-y-4 flex-1">
+            <!-- Camera View Presets -->
+            <div>
+                <label class="text-[11px] font-semibold uppercase tracking-wider text-slate-400 block mb-2">Camera Vantage Presets</label>
+                <div class="grid grid-cols-2 gap-1.5">
+                    <button data-preset="gargantua" class="preset-btn px-2.5 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs text-slate-200 text-left transition flex items-center justify-between">
+                        <span>Gargantua</span>
+                        <span class="text-[10px] font-mono-tech text-amber-400">8°</span>
+                    </button>
+                    <button data-preset="edge" class="preset-btn px-2.5 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs text-slate-200 text-left transition flex items-center justify-between">
+                        <span>Equatorial</span>
+                        <span class="text-[10px] font-mono-tech text-amber-400">1.5°</span>
+                    </button>
+                    <button data-preset="polar" class="preset-btn px-2.5 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs text-slate-200 text-left transition flex items-center justify-between">
+                        <span>Polar Zenith</span>
+                        <span class="text-[10px] font-mono-tech text-amber-400">89°</span>
+                    </button>
+                    <button data-preset="horizon" class="preset-btn px-2.5 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs text-slate-200 text-left transition flex items-center justify-between">
+                        <span>Photon Skim</span>
+                        <span class="text-[10px] font-mono-tech text-rose-400">4.2 Rₛ</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Black Hole Mass (Schwarzschild Radius scale) -->
+            <div class="space-y-1">
+                <div class="flex justify-between text-xs">
+                    <span class="text-slate-300">Singularity Mass (M)</span>
+                    <span id="valMass" class="font-mono-tech text-amber-300">1.00 M₀</span>
+                </div>
+                <input id="sliderMass" type="range" min="0.5" max="2.0" step="0.02" value="1.0">
+                <p class="text-[10px] text-slate-400">Scales Schwarzschild radius Rₛ = 2GM/c² & gravitational well.</p>
+            </div>
+
+            <!-- Kerr Spin Parameter (a*) -->
+            <div class="space-y-1">
+                <div class="flex justify-between text-xs">
+                    <span class="text-slate-300">Kerr Spin (a*)</span>
+                    <span id="valSpin" class="font-mono-tech text-amber-300">0.85 c</span>
+                </div>
+                <input id="sliderSpin" type="range" min="0.0" max="0.99" step="0.01" value="0.85">
+                <p class="text-[10px] text-slate-400">Frame-dragging & Innermost Stable Circular Orbit compression.</p>
+            </div>
+
+            <!-- Relativistic Doppler Beaming -->
+            <div class="space-y-1">
+                <div class="flex justify-between text-xs">
+                    <span class="text-slate-300">Doppler Beaming</span>
+                    <span id="valDoppler" class="font-mono-tech text-cyan-300">1.20</span>
+                </div>
+                <input id="sliderDoppler" type="range" min="0.0" max="2.2" step="0.05" value="1.20">
+                <p class="text-[10px] text-slate-400">Blueshifts approaching plasma; redshifts receding disk side.</p>
+            </div>
+
+            <!-- Accretion Disk Density / Temperature -->
+            <div class="space-y-1">
+                <div class="flex justify-between text-xs">
+                    <span class="text-slate-300">Accretion Disk Luminosity</span>
+                    <span id="valDisk" class="font-mono-tech text-amber-300">1.35</span>
+                </div>
+                <input id="sliderDisk" type="range" min="0.0" max="2.5" step="0.05" value="1.35">
+            </div>
+
+            <!-- Gravitational Lensing Multiplier -->
+            <div class="space-y-1">
+                <div class="flex justify-between text-xs">
+                    <span class="text-slate-300">Gravitational Lensing</span>
+                    <span id="valLensing" class="font-mono-tech text-purple-300">1.00x</span>
+                </div>
+                <input id="sliderLensing" type="range" min="0.0" max="1.6" step="0.02" value="1.00">
+            </div>
+
+            <!-- Relativistic Polar Jets -->
+            <div class="space-y-1">
+                <div class="flex justify-between text-xs">
+                    <span class="text-slate-300">Relativistic Polar Jets</span>
+                    <span id="valJets" class="font-mono-tech text-blue-300">0.45</span>
+                </div>
+                <input id="sliderJets" type="range" min="0.0" max="1.5" step="0.05" value="0.45">
+            </div>
+
+            <!-- Accretion Spectrum Theme -->
+            <div>
+                <label class="text-[11px] font-semibold uppercase tracking-wider text-slate-400 block mb-1.5">Plasma Blackbody Spectrum</label>
+                <div class="grid grid-cols-3 gap-1.5">
+                    <button data-palette="0" class="palette-btn px-2 py-1.5 rounded-xl bg-amber-500/20 border border-amber-400/60 text-[11px] text-amber-200 font-medium">Interstellar</button>
+                    <button data-palette="1" class="palette-btn px-2 py-1.5 rounded-xl bg-white/5 border border-white/10 text-[11px] text-cyan-200 font-medium">Quasar UV</button>
+                    <button data-palette="2" class="palette-btn px-2 py-1.5 rounded-xl bg-white/5 border border-white/10 text-[11px] text-rose-200 font-medium">EHT M87*</button>
+                </div>
+            </div>
+
+            <!-- Visual Overlays & Toggles -->
+            <div class="pt-2 border-t border-white/10 space-y-2">
+                <label class="flex items-center justify-between text-xs text-slate-300 cursor-pointer">
+                    <span>Relativistic Radii Guides (Rₛ, ISCO)</span>
+                    <input id="chkGuides" type="checkbox" checked class="accent-amber-400 w-4 h-4 rounded cursor-pointer">
+                </label>
+                <label class="flex items-center justify-between text-xs text-slate-300 cursor-pointer">
+                    <span>Auto-Orbit Camera Drift</span>
+                    <input id="chkAutoOrbit" type="checkbox" class="accent-amber-400 w-4 h-4 rounded cursor-pointer">
+                </label>
+            </div>
+        </div>
+
+        <!-- Quick Sandbox Actions Footer -->
+        <div class="pt-3 mt-3 border-t border-white/10 grid grid-cols-2 gap-2">
+            <button id="btnSpawnSwarm" class="px-3 py-2 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-xs font-medium text-amber-200 transition flex items-center justify-center gap-1.5">
+                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+                <span>Inject Swarm</span>
+            </button>
+            <button id="btnClearMatter" class="px-3 py-2 rounded-xl bg-white/5 hover:bg-rose-500/20 border border-white/10 hover:border-rose-500/40 text-xs font-medium text-slate-300 hover:text-rose-200 transition flex items-center justify-center gap-1.5">
+                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+                <span>Clear Orbits</span>
+            </button>
+        </div>
+    </aside>
+
+    <!-- BOTTOM INTERACTION DOCK: Mode Switcher & Instructions -->
+    <div class="fixed bottom-3 left-1/2 -translate-x-1/2 z-20 w-[95vw] max-w-2xl pointer-events-none flex flex-col items-center gap-2">
+        <!-- Contextual Hint Pill -->
+        <div id="modeHint" class="hud-panel rounded-full px-3.5 py-1 text-[11px] text-slate-300 pointer-events-auto flex items-center gap-2">
+            <span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+            <span>Drag anywhere to orbit camera in 3D • Scroll or pinch to zoom toward the Event Horizon</span>
+        </div>
+
+        <!-- Mode Buttons Bar -->
+        <div class="hud-panel rounded-2xl p-1.5 flex items-center gap-1.5 pointer-events-auto w-full sm:w-auto justify-center overflow-x-auto">
+            <button data-mode="camera" class="mode-btn active flex items-center gap-2 px-3.5 py-2 rounded-xl border border-transparent text-xs font-medium text-slate-300 hover:text-white transition whitespace-nowrap">
+                <svg class="w-4 h-4 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                </svg>
+                <span>1. Orbit Camera</span>
+            </button>
+
+            <button data-mode="star" class="mode-btn flex items-center gap-2 px-3.5 py-2 rounded-xl border border-transparent text-xs font-medium text-slate-300 hover:text-white transition whitespace-nowrap">
+                <svg class="w-4 h-4 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+                </svg>
+                <span>2. Launch Star (TDE)</span>
+            </button>
+
+            <button data-mode="photon" class="mode-btn flex items-center gap-2 px-3.5 py-2 rounded-xl border border-transparent text-xs font-medium text-slate-300 hover:text-white transition whitespace-nowrap">
+                <svg class="w-4 h-4 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+                <span>3. Fire Photon Beam</span>
+            </button>
+
+            <button data-mode="matter" class="mode-btn flex items-center gap-2 px-3.5 py-2 rounded-xl border border-transparent text-xs font-medium text-slate-300 hover:text-white transition whitespace-nowrap">
+                <svg class="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="3" />
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z" />
+                </svg>
+                <span>4. Test Orbitals</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- GLSL VERTEX & FRAGMENT SHADERS FOR REAL-TIME RELATIVISTIC RAYMARCHING     -->
+    <!-- ========================================================================= -->
+    <script id="vertexShader" type="x-shader/x-vertex">
+        varying vec2 vUv;
+        void main() {
+            vUv = uv;
+            gl_Position = vec4(position, 1.0);
+        }
+    </script>
+
+    <script id="fragmentShader" type="x-shader/x-fragment">
+        precision highp float;
+
+        varying vec2 vUv;
+        uniform vec2 uResolution;
+        uniform float uTime;
+        uniform vec3 uCamPos;
+        uniform vec3 uCamForward;
+        uniform vec3 uCamRight;
+        uniform vec3 uCamUp;
+        uniform float uFovTan;
+
+        // Relativistic Parameters
+        uniform float uRs;           // Schwarzschild Radius (base = 1.0)
+        uniform float uSpin;         // Kerr Spin parameter a* (0.0 to 0.99)
+        uniform float uDoppler;      // Relativistic Doppler beaming strength
+        uniform float uDiskIntensity;// Accretion disk brightness
+        uniform float uLensing;      // Gravitational lensing strength
+        uniform float uJetIntensity; // Relativistic polar jets
+        uniform int uPalette;        // 0 = Interstellar Gold, 1 = Quasar Cyan/Blue, 2 = M87* Crimson
+
+        // Fast 3D hash and value noise for turbulent plasma & background nebula
+        float hash13(vec3 p3) {
+            p3  = fract(p3 * .1031);
+            p3 += dot(p3, p3.zyx + 31.32);
+            return fract((p3.x + p3.y) * p3.z);
+        }
+
+        float noise3D(vec3 x) {
+            vec3 i = floor(x);
+            vec3 f = fract(x);
+            f = f * f * (3.0 - 2.0 * f);
+            return mix(
+                mix(mix(hash13(i + vec3(0,0,0)), hash13(i + vec3(1,0,0)), f.x),
+                    mix(hash13(i + vec3(0,1,0)), hash13(i + vec3(1,1,0)), f.x), f.y),
+                mix(mix(hash13(i + vec3(0,0,1)), hash13(i + vec3(1,0,1)), f.x),
+                    mix(hash13(i + vec3(0,1,1)), hash13(i + vec3(1,1,1)), f.x), f.y),
+                f.z
+            );
+        }
+
+        float fbm(vec3 p) {
+            float v = 0.0;
+            float a = 0.5;
+            vec3 shift = vec3(100.0);
+            for (int i = 0; i < 4; i++) {
+                v += a * noise3D(p);
+                p = p * 2.03 + shift;
+                a *= 0.5;
+            }
+            return v;
+        }
+
+        // Blackbody / Plasma Color Lookup based on temperature & Doppler shift
+        vec3 getPlasmaColor(float temp, float dopplerShift) {
+            // Apply relativistic frequency shift to effective temperature
+            float T = clamp(temp * dopplerShift, 0.05, 3.0);
+            vec3 col;
+            if (uPalette == 0) {
+                // Interstellar Gargantua warm gold-white-amber
+                col = vec3(
+                    smoothstep(0.0, 0.55, T),
+                    smoothstep(0.18, 0.95, T),
+                    smoothstep(0.55, 1.75, T)
+                );
+                col = mix(vec3(1.0, 0.32, 0.04), vec3(1.0, 0.93, 0.82), clamp(T * 0.75, 0.0, 1.0));
+                if (T > 1.1) {
+                    col = mix(col, vec3(0.75, 0.88, 1.0), clamp((T - 1.1) * 0.7, 0.0, 1.0));
+                }
+            } else if (uPalette == 1) {
+                // Quasar UV / High-Energy Blue-Cyan
+                col = mix(vec3(0.08, 0.35, 0.95), vec3(0.65, 0.96, 1.0), clamp(T * 0.8, 0.0, 1.0));
+                if (T < 0.45) col *= T / 0.45;
+            } else {
+                // Event Horizon Telescope M87* Deep Crimson-Orange
+                col = mix(vec3(0.75, 0.06, 0.01), vec3(1.0, 0.72, 0.18), clamp(T * 0.85, 0.0, 1.0));
+            }
+            return col;
+        }
+
+        // Procedural Deep Space Background: Starfield, Milky Way Dust Band, & Lensed Quasars
+        vec3 sampleCelestialSphere(vec3 dir) {
+            vec3 d = normalize(dir);
+            // Galactic plane tilted slightly relative to the black hole equatorial plane
+            vec3 galNormal = normalize(vec3(0.28, 0.92, -0.26));
+            float galLat = abs(dot(d, galNormal));
+
+            // Deep cosmic background gradient
+            vec3 bg = vec3(0.006, 0.010, 0.022);
+
+            // Milky Way nebula glow
+            float n1 = fbm(d * 3.5 + vec3(1.2, 3.4, 5.6));
+            float n2 = fbm(d * 8.0 - vec3(2.1, 0.5, 4.2));
+            float band = exp(-galLat * 5.5) * n1;
+            vec3 nebulaCol = mix(vec3(0.06, 0.12, 0.28), vec3(0.32, 0.18, 0.38), n2);
+            bg += nebulaCol * band * 0.95;
+
+            // Dark dust lanes inside galactic band
+            float dust = smoothstep(0.42, 0.68, fbm(d * 6.5 + 4.0));
+            bg *= (1.0 - 0.55 * dust * exp(-galLat * 8.0));
+
+            // Multi-scale crisp procedural starfield (reacts naturally to gravitational lensing!)
+            vec3 starGrid1 = floor(d * 260.0);
+            float h1 = hash13(starGrid1);
+            if (h1 > 0.9935) {
+                vec3 center = (starGrid1 + 0.5) / 260.0;
+                float dist = length(d - normalize(center)) * 260.0;
+                float brightness = (h1 - 0.9935) / 0.0065;
+                float star = exp(-dist * dist * 18.0) * brightness;
+                vec3 starCol = mix(vec3(1.0, 0.75, 0.55), vec3(0.65, 0.85, 1.0), fract(h1 * 127.3));
+                bg += starCol * star * 2.6;
+            }
+
+            vec3 starGrid2 = floor(d * 110.0);
+            float h2 = hash13(starGrid2 + 73.1);
+            if (h2 > 0.9965) {
+                vec3 center = (starGrid2 + 0.5) / 110.0;
+                float dist = length(d - normalize(center)) * 110.0;
+                float star = exp(-dist * dist * 22.0) * ((h2 - 0.9965) / 0.0035);
+                vec3 starCol = mix(vec3(1.0, 0.85, 0.65), vec3(0.55, 0.8, 1.0), fract(h2 * 43.7));
+                bg += starCol * star * 4.5;
+            }
+
+            return bg;
+        }
+
+        void main() {
+            vec2 ndc = (vUv * 2.0 - 1.0);
+            ndc.x *= uResolution.x / uResolution.y;
+
+            // Construct initial camera ray
+            vec3 rayPos = uCamPos;
+            vec3 rayDir = normalize(uCamForward + ndc.x * uFovTan * uCamRight + ndc.y * uFovTan * uCamUp);
+
+            // Innermost Stable Circular Orbit (ISCO) shrinks as Kerr Spin increases
+            float rISCO = uRs * mix(3.0, 1.35, uSpin);
+            float rOuter = uRs * 11.5;
+
+            vec3 accumColor = vec3(0.0);
+            float transmittance = 1.0;
+            bool captured = false;
+
+            // Specific angular momentum of photon h = |r x v|
+            vec3 hVec = cross(rayPos, rayDir);
+            float h2 = dot(hVec, hVec);
+
+            // Relativistic Geodesic Raymarching Loop
+            const int MAX_STEPS = 128;
+            for (int i = 0; i < MAX_STEPS; i++) {
+                float r2 = dot(rayPos, rayPos);
+                float r = sqrt(r2);
+
+                // Event Horizon Capture check
+                if (r < uRs * 1.01) {
+                    captured = true;
+                    break;
+                }
+
+                // Escape to celestial infinity
+                if (r > 48.0 && i > 12) {
+                    break;
+                }
+
+                // Adaptive step size: fine near the photon sphere & equatorial plane, larger far away
+                float distToPlane = abs(rayPos.y);
+                float dt = clamp(r * 0.085, 0.035 * uRs, 0.95);
+                if (r < uRs * 4.0) {
+                    dt = min(dt, 0.055 * uRs);
+                }
+                if (distToPlane < 0.8 * uRs && r < rOuter * 1.15) {
+                    dt = min(dt, max(0.03 * uRs, distToPlane * 0.45));
+                }
+
+                // Exact Schwarzschild + Kerr frame-dragging geodesic deflection
+                // d²r/dt² = -1.5 * Rs * h² * r / r⁵
+                vec3 accel = -1.5 * uRs * uLensing * h2 * rayPos / (r2 * r2 * r);
+
+                // Frame-dragging twist around spin axis (y-axis) near horizon
+                vec3 spinAxis = vec3(0.0, 1.0, 0.0);
+                vec3 frameDrag = cross(spinAxis, rayPos) * (uSpin * uRs * uRs / (r2 * r2 + 0.01)) * 0.35;
+
+                vec3 nextDir = normalize(rayDir + (accel + frameDrag) * dt);
+                vec3 nextPos = rayPos + nextDir * dt;
+
+                // -----------------------------------------------------------------
+                // 1. VOLUMETRIC ACCRETION DISK INTERSECTION & INTEGRATION
+                // -----------------------------------------------------------------
+                if (uDiskIntensity > 0.01) {
+                    // Check if ray crosses or skims the equatorial plane (y = 0)
+                    bool crossedPlane = (rayPos.y * nextPos.y <= 0.0);
+                    float minPlaneDist = min(abs(rayPos.y), abs(nextPos.y));
+
+                    if (crossedPlane || minPlaneDist < 0.22 * uRs) {
+                        // Interpolate exact crossing point when crossing y=0
+                        float frac = crossedPlane ? abs(rayPos.y) / (abs(rayPos.y) + abs(nextPos.y) + 1e-5) : 0.5;
+                        vec3 diskPos = mix(rayPos, nextPos, frac);
+                        float diskR = length(diskPos.xz);
+
+                        if (diskR > rISCO * 0.92 && diskR < rOuter) {
+                            // Radial profile: peaks near ISCO, tapers toward outer edge
+                            float normR = (diskR - rISCO) / (rOuter - rISCO);
+                            float radialFalloff = smoothstep(0.0, 0.07, normR) * pow(1.0 - clamp(normR, 0.0, 1.0), 1.65);
+
+                            // Differential Keplerian angular velocity: omega ~ 1 / r^(1.5)
+                            float angle = atan(diskPos.z, diskPos.x);
+                            float omega = 2.6 / pow(max(diskR / uRs, 0.8), 1.25);
+                            float rotAngle = angle + uTime * omega;
+
+                            // Spiral logarithmic arms + multi-octave magneto-rotational turbulence
+                            vec3 sampleCoord = vec3(
+                                cos(rotAngle) * diskR * 1.4,
+                                sin(rotAngle) * diskR * 1.4,
+                                diskR * 2.2 - uTime * 0.8
+                            );
+                            float rings = sin(diskR * 9.5 / uRs - fbm(sampleCoord) * 4.5) * 0.5 + 0.5;
+                            float turb = fbm(sampleCoord * 1.8);
+                            float density = radialFalloff * mix(0.35, 1.0, rings * 0.65 + turb * 0.55);
+
+                            // Vertical Gaussian thickness falloff
+                            float diskHeight = mix(0.04, 0.22, normR) * uRs;
+                            float verticalWeight = crossedPlane ? 1.0 : exp(-pow(minPlaneDist / diskHeight, 2.0));
+                            density *= verticalWeight;
+
+                            // Relativistic Tangential Velocity & Doppler Beaming
+                            // Plasma orbits counter-clockwise in XZ plane
+                            vec3 tangentVel = normalize(vec3(-diskPos.z, 0.0, diskPos.x));
+                            float beta = clamp(sqrt(0.5 * uRs / max(diskR - uRs, 0.25 * uRs)), 0.0, 0.78);
+                            // Project velocity onto incoming photon direction (-rayDir points toward observer)
+                            float cosTheta = dot(tangentVel, -rayDir);
+                            float gamma = 1.0 / sqrt(1.0 - beta * beta);
+                            // Relativistic Doppler factor D = 1 / (gamma * (1 - beta * cosTheta))
+                            float dopplerFactor = 1.0 / (gamma * (1.0 - beta * cosTheta * uDoppler * 0.65));
+                            // Gravitational Redshift factor sqrt(1 - Rs / r)
+                            float gravRedshift = sqrt(clamp(1.0 - uRs / diskR, 0.1, 1.0));
+                            float totalShift = dopplerFactor * gravRedshift;
+
+                            // Temperature peaks near the ISCO inner edge
+                            float baseTemp = pow(1.0 - clamp(normR * 0.85, 0.0, 0.95), 0.85) * 1.35;
+                            vec3 plasmaCol = getPlasmaColor(baseTemp, totalShift);
+
+                            // Relativistic beaming intensity scales ~ D^3
+                            float beamingIntensity = pow(clamp(totalShift, 0.25, 2.4), 2.6);
+                            float alpha = clamp(density * uDiskIntensity * (crossedPlane ? 0.85 : 0.28), 0.0, 0.95);
+
+                            accumColor += transmittance * plasmaCol * alpha * beamingIntensity * 1.75;
+                            transmittance *= (1.0 - alpha * 0.65);
+                        }
+                    }
+                }
+
+                // -----------------------------------------------------------------
+                // 2. RELATIVISTIC POLAR ASTROPHYSICAL JETS (Blandford-Znajek effect)
+                // -----------------------------------------------------------------
+                if (uJetIntensity > 0.01 && r > uRs * 1.1 && r < uRs * 22.0) {
+                    float absY = abs(rayPos.y);
+                    float cylR = length(rayPos.xz);
+                    // Parabolic magnetic collimation funnel along Y axis
+                    float jetRadius = 0.28 * uRs * pow(max(absY / uRs, 0.2), 0.55);
+                    if (cylR < jetRadius * 2.2 && absY > uRs * 0.8) {
+                        float radialJet = exp(-pow(cylR / jetRadius, 2.0) * 1.8);
+                        float heightDecay = exp(-absY / (14.0 * uRs));
+                        float helixAngle = atan(rayPos.z, rayPos.x) * 2.0 - absY * 1.8 + uTime * 6.5;
+                        float filament = 0.65 + 0.35 * sin(helixAngle);
+                        float jetDensity = radialJet * heightDecay * filament * uJetIntensity * dt * 0.42;
+
+                        vec3 jetColor = mix(vec3(0.25, 0.55, 1.0), vec3(0.75, 0.92, 1.0), radialJet);
+                        accumColor += transmittance * jetColor * jetDensity;
+                    }
+                }
+
+                // -----------------------------------------------------------------
+                // 3. PHOTON SPHERE CORONA GLOW (r = 1.5 Rs)
+                // -----------------------------------------------------------------
+                float photonSphereDist = abs(r - 1.5 * uRs);
+                if (photonSphereDist < 0.35 * uRs) {
+                    float corona = exp(-pow(photonSphereDist / (0.12 * uRs), 2.0)) * dt * 0.28;
+                    vec3 coronaCol = getPlasmaColor(1.2, 1.1);
+                    accumColor += transmittance * coronaCol * corona * uDiskIntensity;
+                }
+
+                rayPos = nextPos;
+                rayDir = nextDir;
+
+                if (transmittance < 0.015) break;
+            }
+
+            // Add lensed background starfield & galactic nebula for rays that escaped the horizon
+            if (!captured) {
+                vec3 skyCol = sampleCelestialSphere(rayDir);
+                accumColor += transmittance * skyCol;
+            }
+
+            // ACES Filmic Tone Mapping & Subtle Bloom Gamma Correction
+            vec3 x = max(vec3(0.0), accumColor - 0.004);
+            vec3 mapped = (x * (6.2 * x + 0.5)) / (x * (6.2 * x + 1.7) + 0.06);
+
+            // Subtle cinematic vignette
+            float vig = 1.0 - 0.22 * dot(ndc * 0.5, ndc * 0.5);
+            mapped *= clamp(vig, 0.6, 1.0);
+
+            gl_FragColor = vec4(mapped, 1.0);
+        }
+    </script>
+
+    <!-- ========================================================================= -->
+    <!-- MAIN APPLICATION & RELATIVISTIC N-BODY / GEODESIC ENGINE                 -->
+    <!-- ========================================================================= -->
+    <script>
+        window.onload = function () {
+            // ---------------------------------------------------------------------
+            // 1. SIMULATION STATE & PARAMETERS
+            // ---------------------------------------------------------------------
+            const state = {
+                mode: 'camera',         // 'camera' | 'star' | 'photon' | 'matter'
+                rs: 1.0,                // Schwarzschild radius in simulation units
+                spin: 0.85,             // Kerr dimensionless spin parameter a*
+                doppler: 1.20,          // Relativistic Doppler beaming multiplier
+                diskIntensity: 1.35,    // Accretion disk brightness
+                lensing: 1.00,          // Gravitational lensing multiplier
+                jetIntensity: 0.45,     // Relativistic polar jet intensity
+                palette: 0,             // 0: Interstellar, 1: Quasar UV, 2: M87*
+                showGuides: true,       // Show 3D relativistic radii guides
+                autoOrbit: false,       // Gentle camera orbital drift
+
+                // Spherical Camera Coordinates around Origin (0,0,0)
+                camRadius: 18.0,
+                camTheta: 0.65,         // Azimuthal angle (radians)
+                camPhi: 1.42,           // Polar inclination from Y-axis (1.5708 = equatorial)
+                targetRadius: 18.0,
+                targetTheta: 0.65,
+                targetPhi: 1.42,
+                fovDeg: 50,
+
+                // Interactive Pointer State
+                isDragging: false,
+                dragStartX: 0,
+                dragStartY: 0,
+                dragCurrX: 0,
+                dragCurrY: 0,
+                pinchStartDist: 0,
+
+                // Orbiting Relativistic Entities (Stars, Test Particles, Photons, TDE Debris)
+                entities: [],
+                capturedCount: 0
+            };
+
+            // ---------------------------------------------------------------------
+            // 2. THREE.JS WEBGL RAYMARCHING SETUP
+            // ---------------------------------------------------------------------
+            const glCanvas = document.getElementById('glCanvas');
+            const overlayCanvas = document.getElementById('overlayCanvas');
+            const ctx = overlayCanvas.getContext('2d');
+
+            const renderer = new THREE.WebGLRenderer({
+                canvas: glCanvas,
+                antialias: false,
+                powerPreference: 'high-performance'
+            });
+
+            const scene = new THREE.Scene();
+            const orthoCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+
+            // Perspective camera used for exact 3D-to-2D projection of particles & guides
+            const projCam = new THREE.PerspectiveCamera(state.fovDeg, window.innerWidth / window.innerHeight, 0.1, 500);
+
+            const uniforms = {
+                uResolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+                uTime: { value: 0 },
+                uCamPos: { value: new THREE.Vector3() },
+                uCamForward: { value: new THREE.Vector3() },
+                uCamRight: { value: new THREE.Vector3() },
+                uCamUp: { value: new THREE.Vector3() },
+                uFovTan: { value: Math.tan(THREE.MathUtils.degToRad(state.fovDeg * 0.5)) },
+                uRs: { value: state.rs },
+                uSpin: { value: state.spin },
+                uDoppler: { value: state.doppler },
+                uDiskIntensity: { value: state.diskIntensity },
+                uLensing: { value: state.lensing },
+                uJetIntensity: { value: state.jetIntensity },
+                uPalette: { value: state.palette }
+            };
+
+            const quadMaterial = new THREE.ShaderMaterial({
+                vertexShader: document.getElementById('vertexShader').textContent,
+                fragmentShader: document.getElementById('fragmentShader').textContent,
+                uniforms: uniforms,
+                depthWrite: false,
+                depthTest: false
+            });
+
+            const quadMesh = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), quadMaterial);
+            scene.add(quadMesh);
+
+            function handleResize() {
+                const w = window.innerWidth;
+                const h = window.innerHeight;
+                // Cap shader pixel ratio at 1.35 for buttery 60FPS raymarching on 4K/Retina screens
+                const shaderPR = Math.min(window.devicePixelRatio || 1, 1.35);
+                renderer.setPixelRatio(shaderPR);
+                renderer.setSize(w, h, false);
+                uniforms.uResolution.value.set(w * shaderPR, h * shaderPR);
+
+                // High-DPI crisp 2D overlay canvas for trajectories & HUD telemetry
+                const uiPR = Math.min(window.devicePixelRatio || 1, 2.0);
+                overlayCanvas.width = w * uiPR;
+                overlayCanvas.height = h * uiPR;
+                ctx.setTransform(uiPR, 0, 0, uiPR, 0, 0);
+
+                projCam.aspect = w / h;
+                projCam.updateProjectionMatrix();
+            }
+            window.addEventListener('resize', handleResize);
+            handleResize();
+
+            // ---------------------------------------------------------------------
+            // 3. WEB AUDIO API: GRAVITATIONAL WAVE & SINGULARITY DRONE SYNTHESIZER
+            // ---------------------------------------------------------------------
+            let audioCtx = null;
+            let isAudioEnabled = false;
+            let droneOsc1 = null;
+            let droneOsc2 = null;
+            let droneGain = null;
+            let filterNode = null;
+
+            function initAudio() {
+                if (audioCtx) return;
+                const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+                audioCtx = new AudioContextClass();
+
+                droneOsc1 = audioCtx.createOscillator();
+                droneOsc2 = audioCtx.createOscillator();
+                filterNode = audioCtx.createBiquadFilter();
+                droneGain = audioCtx.createGain();
+
+                droneOsc1.type = 'sawtooth';
+                droneOsc2.type = 'sine';
+                droneOsc1.frequency.value = 52;
+                droneOsc2.frequency.value = 26;
+
+                filterNode.type = 'lowpass';
+                filterNode.frequency.value = 140;
+                filterNode.Q.value = 4.5;
+
+                droneGain.gain.value = 0.001;
+
+                droneOsc1.connect(filterNode);
+                droneOsc2.connect(filterNode);
+                filterNode.connect(droneGain);
+                droneGain.connect(audioCtx.destination);
+
+                droneOsc1.start();
+                droneOsc2.start();
+            }
+
+            function triggerGravitationalChirp(type = 'capture') {
+                if (!isAudioEnabled || !audioCtx) return;
+                const now = audioCtx.currentTime;
+                const osc = audioCtx.createOscillator();
+                const g = audioCtx.createGain();
+                osc.connect(g);
+                g.connect(audioCtx.destination);
+
+                if (type === 'tde') {
+                    // Tidal disruption harmonic sweep
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(110, now);
+                    osc.frequency.exponentialRampToValueAtTime(42, now + 0.65);
+                    g.gain.setValueAtTime(0.14, now);
+                    g.gain.exponentialRampToValueAtTime(0.001, now + 0.65);
+                    osc.start(now);
+                    osc.stop(now + 0.65);
+                } else if (type === 'photon') {
+                    // High-frequency relativistic laser ping
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(680, now);
+                    osc.frequency.exponentialRampToValueAtTime(220, now + 0.25);
+                    g.gain.setValueAtTime(0.08, now);
+                    g.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+                    osc.start(now);
+                    osc.stop(now + 0.25);
+                } else {
+                    // Black hole inspiral chirp (LIGO-style frequency sweep up)
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(45, now);
+                    osc.frequency.exponentialRampToValueAtTime(260, now + 0.28);
+                    g.gain.setValueAtTime(0.12, now);
+                    g.gain.exponentialRampToValueAtTime(0.001, now + 0.30);
+                    osc.start(now);
+                    osc.stop(now + 0.30);
+                }
+            }
+
+            // ---------------------------------------------------------------------
+            // 4. RELATIVISTIC GEODESIC & TIDAL DISRUPTION (TDE) PHYSICS ENGINE
+            // ---------------------------------------------------------------------
+            let bannerTimeout = null;
+            function showEventToast(message) {
+                const banner = document.getElementById('eventBanner');
+                const text = document.getElementById('eventBannerText');
+                text.textContent = message;
+                banner.classList.remove('opacity-0', '-translate-y-2');
+                banner.classList.add('opacity-100', 'translate-y-0');
+                if (bannerTimeout) clearTimeout(bannerTimeout);
+                bannerTimeout = setTimeout(() => {
+                    banner.classList.remove('opacity-100', 'translate-y-0');
+                    banner.classList.add('opacity-0', '-translate-y-2');
+                }, 2600);
+            }
+
+            // Convert 2D screen coordinates + launch drag vector into 3D orbital position & velocity
+            function screenToOrbitalPlane(screenX, screenY) {
+                const w = window.innerWidth;
+                const h = window.innerHeight;
+                const ndcX = (screenX / w) * 2 - 1;
+                const ndcY = -(screenY / h) * 2 + 1;
+
+                const raycaster = new THREE.Raycaster();
+                raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), projCam);
+
+                // Intersect with equatorial plane (y = 0) if camera angle allows, else plane facing camera
+                const planeNormal = Math.abs(projCam.position.y) > 1.8
+                    ? new THREE.Vector3(0, 1, 0)
+                    : projCam.getWorldDirection(new THREE.Vector3()).negate();
+                const plane = new THREE.Plane(planeNormal, 0);
+                const hitPoint = new THREE.Vector3();
+                const hit = raycaster.ray.intersectPlane(plane, hitPoint);
+
+                if (!hit || hitPoint.length() > 45) {
+                    // Fallback to point at camera distance along ray
+                    raycaster.ray.at(state.camRadius, hitPoint);
+                }
+                return hitPoint;
+            }
+
+            function spawnEntity(type, pos3D, vel3D, customProps = {}) {
+                const trailMax = type === 'photon' ? 55 : (type === 'debris' ? 18 : 75);
+                state.entities.push({
+                    type: type, // 'star' | 'photon' | 'matter' | 'debris'
+                    pos: pos3D.clone(),
+                    vel: vel3D.clone(),
+                    trail: [pos3D.clone()],
+                    trailMax: trailMax,
+                    radius: customProps.radius || (type === 'star' ? 6.5 : (type === 'photon' ? 3.2 : 3.5)),
+                    color: customProps.color || (
+                        type === 'star' ? '#fde047' :
+                        type === 'photon' ? '#38bdf8' :
+                        type === 'debris' ? '#fb923c' : '#34d399'
+                    ),
+                    disrupted: false,
+                    age: 0
+                });
+            }
+
+            // Spawn initial demonstration bodies so the user immediately sees relativistic precession
+            function spawnInitialSwarm() {
+                const rs = state.rs;
+                // 1. Precessing elliptical test mass near ISCO
+                const r1 = 4.6 * rs;
+                const vCirc1 = Math.sqrt((0.5 * rs) / (r1 - rs));
+                spawnEntity(
+                    'matter',
+                    new THREE.Vector3(r1, 0.15, 0),
+                    new THREE.Vector3(0, 0.02, vCirc1 * 0.92),
+                    { color: '#34d399', radius: 4.0 }
+                );
+
+                // 2. Main-sequence star on an eccentric orbit approaching the tidal radius
+                const r2 = 7.8 * rs;
+                const vCirc2 = Math.sqrt((0.5 * rs) / (r2 - rs));
+                spawnEntity(
+                    'star',
+                    new THREE.Vector3(0, 0.25, -r2),
+                    new THREE.Vector3(vCirc2 * 0.82, -0.03, 0),
+                    { color: '#fde047', radius: 6.5 }
+                );
+            }
+
+            function injectParticleSwarm() {
+                const rs = state.rs;
+                const count = 18;
+                for (let i = 0; i < count; i++) {
+                    const angle = (i / count) * Math.PI * 2 + (Math.random() - 0.5) * 0.3;
+                    const dist = (3.2 + Math.random() * 6.5) * rs;
+                    const pos = new THREE.Vector3(
+                        Math.cos(angle) * dist,
+                        (Math.random() - 0.5) * 0.8 * rs,
+                        Math.sin(angle) * dist
+                    );
+                    // Paczyński–Wiita circular orbital speed v = sqrt(GM / (r - Rs))
+                    const speed = Math.sqrt((0.5 * rs) / Math.max(dist - rs, 0.5 * rs)) * (0.85 + Math.random() * 0.28);
+                    const tangent = new THREE.Vector3(-Math.sin(angle), (Math.random() - 0.5) * 0.08, Math.cos(angle)).normalize();
+                    const colors = ['#34d399', '#38bdf8', '#fbbf24', '#f472b6', '#a78bfa'];
+                    spawnEntity('matter', pos, tangent.multiplyScalar(speed), {
+                        color: colors[i % colors.length],
+                        radius: 3.2
+                    });
+                }
+                showEventToast('Injected 18 Relativistic Test Masses into Geodesic Orbits');
+            }
+
+            // Integrate Schwarzschild + Kerr Geodesics for all active entities
+            function updatePhysics(dt) {
+                const rs = state.rs;
+                const tidalRadius = 2.85 * rs; // Roche / Tidal Disruption Limit for stars
+                const newDebris = [];
+
+                // Sub-stepping for high accuracy near the Photon Sphere & ISCO
+                const subSteps = 4;
+                const h = Math.min(dt, 0.033) * 2.2 / subSteps;
+
+                for (let i = state.entities.length - 1; i >= 0; i--) {
+                    const e = state.entities[i];
+                    e.age += dt;
+                    let removed = false;
+
+                    for (let step = 0; step < subSteps; step++) {
+                        const r2 = e.pos.lengthSq();
+                        const r = Math.sqrt(r2);
+
+                        // Captured by the Event Horizon (r <= Rs)
+                        if (r <= rs * 1.03) {
+                            state.capturedCount++;
+                            if (e.type !== 'debris') {
+                                triggerGravitationalChirp('capture');
+                            }
+                            state.entities.splice(i, 1);
+                            removed = true;
+                            break;
+                        }
+
+                        // Escaped far from gravitational well
+                        if (r > 75.0) {
+                            state.entities.splice(i, 1);
+                            removed = true;
+                            break;
+                        }
+
+                        // Check Tidal Disruption Event (Spaghettification) for Stars crossing Roche limit
+                        if (e.type === 'star' && !e.disrupted && r < tidalRadius) {
+                            e.disrupted = true;
+                            triggerGravitationalChirp('tde');
+                            showEventToast('Tidal Disruption Event! Star Spaghettified at r = ' + (r / rs).toFixed(2) + ' Rₛ');
+
+                            // Shatter star into a stream of glowing plasma debris with differential tidal velocities
+                            const debrisCount = 26;
+                            for (let d = 0; d < debrisCount; d++) {
+                                const frac = (d / debrisCount) - 0.5;
+                                const offset = e.pos.clone().normalize().multiplyScalar(frac * 0.45 * rs);
+                                const jitter = new THREE.Vector3(
+                                    (Math.random() - 0.5) * 0.18,
+                                    (Math.random() - 0.5) * 0.12,
+                                    (Math.random() - 0.5) * 0.18
+                                );
+                                const dPos = e.pos.clone().add(offset).add(jitter);
+                                // Inner tidal tail speeds up, outer tail slows down
+                                const dVel = e.vel.clone().multiplyScalar(1.0 - frac * 0.28).add(jitter.multiplyScalar(0.15));
+                                const debrisPalette = ['#fef08a', '#fbbf24', '#fb923c', '#f87171'];
+                                newDebris.push({
+                                    pos: dPos,
+                                    vel: dVel,
+                                    color: debrisPalette[d % debrisPalette.length]
+                                });
+                            }
+                            state.entities.splice(i, 1);
+                            removed = true;
+                            break;
+                        }
+
+                        // Compute General Relativistic Geodesic Acceleration
+                        const angMomVec = new THREE.Vector3().crossVectors(e.pos, e.vel);
+                        const L2 = angMomVec.lengthSq();
+
+                        if (e.type === 'photon') {
+                            // Null geodesic for massless photons: a = -1.5 * Rs * L^2 * r / r^5
+                            const factor = -1.5 * rs * state.lensing * L2 / (r2 * r2 * r);
+                            const accel = e.pos.clone().multiplyScalar(factor);
+                            e.vel.addScaledVector(accel, h);
+                            // Photons travel at constant coordinate speed c = 1.35
+                            e.vel.normalize().multiplyScalar(1.35);
+                        } else {
+                            // Timelike geodesic for massive bodies (Newtonian + GR 1/r^4 precession + Paczyński–Wiita potential)
+                            // GM = 0.5 * Rs (since Rs = 2GM/c^2 with c = 1)
+                            const GM = 0.5 * rs;
+                            const newtonian = -GM / (r2 * r);
+                            const grPrecession = -1.5 * rs * L2 / (r2 * r2 * r);
+                            const accel = e.pos.clone().multiplyScalar(newtonian + grPrecession);
+
+                            // Lense-Thirring Kerr Frame Dragging near the horizon
+                            const spinAxis = new THREE.Vector3(0, 1, 0);
+                            const frameDrag = new THREE.Vector3().crossVectors(spinAxis, e.vel)
+                                .multiplyScalar(state.spin * rs * rs / (r2 * r + 0.1) * 0.25);
+
+                            e.vel.addScaledVector(accel, h);
+                            e.vel.addScaledVector(frameDrag, h);
+                        }
+
+                        e.pos.addScaledVector(e.vel, h);
+                    }
+
+                    if (!removed) {
+                        e.trail.push(e.pos.clone());
+                        if (e.trail.length > e.trailMax) {
+                            e.trail.shift();
+                        }
+                    }
+                }
+
+                // Append newly spaghettified stellar debris
+                for (const d of newDebris) {
+                    spawnEntity('debris', d.pos, d.vel, { color: d.color, radius: 2.4 });
+                }
+            }
+
+            // ---------------------------------------------------------------------
+            // 5. RENDER 3D RELATIVISTIC GUIDES & ORBITING PARTICLES ON OVERLAY
+            // ---------------------------------------------------------------------
+            function project3DTo2D(vec3) {
+                const p = vec3.clone().project(projCam);
+                if (p.z > 1.0) return null; // Behind camera
+                const w = window.innerWidth;
+                const h = window.innerHeight;
+                return {
+                    x: (p.x * 0.5 + 0.5) * w,
+                    y: (-p.y * 0.5 + 0.5) * h,
+                    dist: vec3.distanceTo(projCam.position)
+                };
+            }
+
+            function drawRelativisticCircle(radius, color, label, dashed = true) {
+                const segments = 72;
+                ctx.save();
+                ctx.beginPath();
+                if (dashed) ctx.setLineDash([5, 5]);
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 1.25;
+
+                let firstPoint = null;
+                let labelPos = null;
+                const camDistToOrigin = projCam.position.length();
+                const shadowRadius = 2.55 * state.rs;
+
+                for (let i = 0; i <= segments; i++) {
+                    const theta = (i / segments) * Math.PI * 2;
+                    const pt3D = new THREE.Vector3(Math.cos(theta) * radius, 0, Math.sin(theta) * radius);
+                    const proj = project3DTo2D(pt3D);
+                    if (!proj) continue;
+
+                    // Check if point is behind the black hole shadow sphere
+                    const isBehindBH = proj.dist > camDistToOrigin && pt3D.length() < shadowRadius;
+                    if (isBehindBH) {
+                        firstPoint = null;
+                        continue;
+                    }
+
+                    if (!firstPoint) {
+                        ctx.moveTo(proj.x, proj.y);
+                        firstPoint = proj;
+                    } else {
+                        ctx.lineTo(proj.x, proj.y);
+                    }
+
+                    if (i === 18) labelPos = proj;
+                }
+                ctx.stroke();
+
+                if (label && labelPos) {
+                    ctx.font = '500 10px "JetBrains Mono", monospace';
+                    ctx.fillStyle = color;
+                    ctx.fillText(label, labelPos.x + 6, labelPos.y - 4);
+                }
+                ctx.restore();
+            }
+
+            function renderOverlay() {
+                const w = window.innerWidth;
+                const h = window.innerHeight;
+                ctx.clearRect(0, 0, w, h);
+
+                const rs = state.rs;
+                const rISCO = rs * (3.0 - 1.65 * state.spin);
+                const camDistToOrigin = projCam.position.length();
+
+                // 1. Draw Relativistic Equatorial Radii Guides if toggled
+                if (state.showGuides) {
+                    drawRelativisticCircle(rs * 1.0, 'rgba(244, 63, 94, 0.55)', 'Event Horizon (1.0 Rₛ)', false);
+                    drawRelativisticCircle(rs * 1.5, 'rgba(251, 191, 36, 0.55)', 'Photon Sphere (1.5 Rₛ)', true);
+                    drawRelativisticCircle(rISCO, 'rgba(56, 189, 248, 0.55)', `ISCO (${(rISCO / rs).toFixed(2)} Rₛ)`, true);
+                }
+
+                // 2. Draw Active Geodesic Trajectories & Bodies
+                for (const e of state.entities) {
+                    // Draw geodesic trail
+                    if (e.trail.length > 1) {
+                        ctx.save();
+                        ctx.beginPath();
+                        let started = false;
+                        for (let j = 0; j < e.trail.length; j++) {
+                            const tp = e.trail[j];
+                            const proj = project3DTo2D(tp);
+                            if (!proj) continue;
+                            // Occlude trail segments strictly behind the Event Horizon shadow
+                            const toCam = tp.clone().sub(projCam.position);
+                            const rayDir = toCam.clone().normalize();
+                            const impactParam = new THREE.Vector3().crossVectors(projCam.position, rayDir).length();
+                            if (proj.dist > camDistToOrigin && impactParam < 2.45 * rs) {
+                                started = false;
+                                continue;
+                            }
+                            if (!started) {
+                                ctx.moveTo(proj.x, proj.y);
+                                started = true;
+                            } else {
+                                ctx.lineTo(proj.x, proj.y);
+                            }
+                        }
+                        ctx.strokeStyle = e.color;
+                        ctx.globalAlpha = e.type === 'debris' ? 0.45 : 0.65;
+                        ctx.lineWidth = e.type === 'photon' ? 1.8 : 1.5;
+                        ctx.stroke();
+                        ctx.restore();
+                    }
+
+                    // Draw body core + glow
+                    const headProj = project3DTo2D(e.pos);
+                    if (headProj) {
+                        const toCam = e.pos.clone().sub(projCam.position);
+                        const rayDir = toCam.clone().normalize();
+                        const impactParam = new THREE.Vector3().crossVectors(projCam.position, rayDir).length();
+                        const occluded = headProj.dist > camDistToOrigin && impactParam < 2.45 * rs;
+
+                        if (!occluded) {
+                            ctx.save();
+                            const rDist = e.pos.length();
+                            // Stretch star visually as it approaches the Tidal Disruption radius!
+                            const tidalStretch = (e.type === 'star' && rDist < 4.5 * rs)
+                                ? Math.min(2.6, 1.0 + (4.5 * rs - rDist) * 0.75)
+                                : 1.0;
+
+                            ctx.translate(headProj.x, headProj.y);
+                            if (tidalStretch > 1.05) {
+                                const originProj = project3DTo2D(new THREE.Vector3(0, 0, 0));
+                                if (originProj) {
+                                    const angleToBH = Math.atan2(originProj.y - headProj.y, originProj.x - headProj.x);
+                                    ctx.rotate(angleToBH);
+                                    ctx.scale(tidalStretch, 1 / Math.sqrt(tidalStretch));
+                                }
+                            }
+
+                            ctx.shadowColor = e.color;
+                            ctx.shadowBlur = e.type === 'star' ? 16 : 10;
+                            ctx.fillStyle = e.color;
+                            ctx.beginPath();
+                            ctx.arc(0, 0, e.radius, 0, Math.PI * 2);
+                            ctx.fill();
+
+                            if (e.type === 'star' || e.type === 'photon') {
+                                ctx.fillStyle = '#ffffff';
+                                ctx.beginPath();
+                                ctx.arc(0, 0, e.radius * 0.45, 0, Math.PI * 2);
+                                ctx.fill();
+                            }
+                            ctx.restore();
+                        }
+                    }
+                }
+
+                // 3. Draw Interactive Slingshot Vector Preview when Launching Star / Photon / Matter
+                if (state.isDragging && state.mode !== 'camera') {
+                    ctx.save();
+                    const sx = state.dragStartX;
+                    const sy = state.dragStartY;
+                    const cx = state.dragCurrX;
+                    const cy = state.dragCurrY;
+
+                    // Velocity arrow goes in direction of drag (or slingshot)
+                    ctx.strokeStyle = state.mode === 'photon' ? '#38bdf8' : (state.mode === 'star' ? '#fde047' : '#34d399');
+                    ctx.lineWidth = 2;
+                    ctx.setLineDash([4, 4]);
+                    ctx.beginPath();
+                    ctx.moveTo(sx, sy);
+                    ctx.lineTo(cx, cy);
+                    ctx.stroke();
+
+                    // Spawn point circle
+                    ctx.setLineDash([]);
+                    ctx.fillStyle = ctx.strokeStyle;
+                    ctx.beginPath();
+                    ctx.arc(sx, sy, 6, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    // Velocity readout label
+                    const dragLen = Math.hypot(cx - sx, cy - sy);
+                    const pctC = state.mode === 'photon' ? '1.00 c (Null Geodesic)' : `${Math.min(0.95, (dragLen / 220)).toFixed(2)} c`;
+                    ctx.font = '600 11px "JetBrains Mono", monospace';
+                    ctx.fillStyle = '#f8fafc';
+                    ctx.fillText(`v₀ = ${pctC}`, cx + 10, cy - 8);
+                    ctx.restore();
+                }
+            }
+
+            // ---------------------------------------------------------------------
+            // 6. INTERACTIVE POINTER, TOUCH & KEYBOARD CONTROLS
+            // ---------------------------------------------------------------------
+            function getPointerPos(e) {
+                if (e.touches && e.touches.length > 0) {
+                    return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+                }
+                return { x: e.clientX, y: e.clientY };
+            }
+
+            overlayCanvas.addEventListener('mousedown', (e) => {
+                if (e.button !== 0) return;
+                state.isDragging = true;
+                state.dragStartX = e.clientX;
+                state.dragStartY = e.clientY;
+                state.dragCurrX = e.clientX;
+                state.dragCurrY = e.clientY;
+            });
+
+            window.addEventListener('mousemove', (e) => {
+                if (!state.isDragging) return;
+                const dx = e.clientX - state.dragCurrX;
+                const dy = e.clientY - state.dragCurrY;
+                state.dragCurrX = e.clientX;
+                state.dragCurrY = e.clientY;
+
+                if (state.mode === 'camera') {
+                    state.targetTheta -= dx * 0.0065;
+                    state.targetPhi = Math.max(0.08, Math.min(Math.PI - 0.08, state.targetPhi - dy * 0.0065));
+                }
+            });
+
+            window.addEventListener('mouseup', () => {
+                if (!state.isDragging) return;
+                if (state.mode !== 'camera') {
+                    completeEntityLaunch();
+                }
+                state.isDragging = false;
+            });
+
+            // Touch Support (Orbit, Pinch-to-Zoom, and Drag-to-Launch)
+            overlayCanvas.addEventListener('touchstart', (e) => {
+                if (e.touches.length === 2) {
+                    const dx = e.touches[0].clientX - e.touches[1].clientX;
+                    const dy = e.touches[0].clientY - e.touches[1].clientY;
+                    state.pinchStartDist = Math.hypot(dx, dy);
+                    state.isDragging = false;
+                    return;
+                }
+                const pt = getPointerPos(e);
+                state.isDragging = true;
+                state.dragStartX = pt.x;
+                state.dragStartY = pt.y;
+                state.dragCurrX = pt.x;
+                state.dragCurrY = pt.y;
+            }, { passive: true });
+
+            overlayCanvas.addEventListener('touchmove', (e) => {
+                if (e.touches.length === 2 && state.pinchStartDist > 0) {
+                    const dx = e.touches[0].clientX - e.touches[1].clientX;
+                    const dy = e.touches[0].clientY - e.touches[1].clientY;
+                    const dist = Math.hypot(dx, dy);
+                    const delta = state.pinchStartDist - dist;
+                    state.targetRadius = Math.max(state.rs * 2.6, Math.min(42.0, state.targetRadius + delta * 0.04));
+                    state.pinchStartDist = dist;
+                    return;
+                }
+                if (!state.isDragging) return;
+                const pt = getPointerPos(e);
+                const dx = pt.x - state.dragCurrX;
+                const dy = pt.y - state.dragCurrY;
+                state.dragCurrX = pt.x;
+                state.dragCurrY = pt.y;
+
+                if (state.mode === 'camera') {
+                    state.targetTheta -= dx * 0.0065;
+                    state.targetPhi = Math.max(0.08, Math.min(Math.PI - 0.08, state.targetPhi - dy * 0.0065));
+                }
+            }, { passive: true });
+
+            window.addEventListener('touchend', () => {
+                if (state.isDragging && state.mode !== 'camera') {
+                    completeEntityLaunch();
+                }
+                state.isDragging = false;
+                state.pinchStartDist = 0;
+            });
+
+            // Scroll Wheel Zoom
+            overlayCanvas.addEventListener('wheel', (e) => {
+                e.preventDefault();
+                state.targetRadius = Math.max(state.rs * 2.6, Math.min(42.0, state.targetRadius + e.deltaY * 0.012));
+            }, { passive: false });
+
+            function completeEntityLaunch() {
+                const start3D = screenToOrbitalPlane(state.dragStartX, state.dragStartY);
+                const end3D = screenToOrbitalPlane(state.dragCurrX, state.dragCurrY);
+                const dragPixels = Math.hypot(state.dragCurrX - state.dragStartX, state.dragCurrY - state.dragStartY);
+
+                let vel3D;
+                if (dragPixels < 12) {
+                    // Single click without drag: automatically inject into near-circular Keplerian orbit!
+                    const r = start3D.length();
+                    const speed = state.mode === 'photon'
+                        ? 1.35
+                        : Math.sqrt((0.5 * state.rs) / Math.max(r - state.rs, 0.4 * state.rs));
+                    vel3D = new THREE.Vector3(-start3D.z, 0, start3D.x).normalize().multiplyScalar(speed);
+                } else {
+                    vel3D = end3D.sub(start3D).multiplyScalar(0.14);
+                    if (state.mode === 'photon') {
+                        vel3D.normalize().multiplyScalar(1.35);
+                    } else if (vel3D.length() > 1.15) {
+                        vel3D.normalize().multiplyScalar(1.15);
+                    }
+                }
+
+                if (state.mode === 'photon') {
+                    triggerGravitationalChirp('photon');
+                }
+                spawnEntity(state.mode, start3D, vel3D);
+            }
+
+            // ---------------------------------------------------------------------
+            // 7. UI CONTROLS & TELEMETRY BINDINGS
+            // ---------------------------------------------------------------------
+            const modeHints = {
+                camera: 'Drag anywhere to orbit camera in 3D • Scroll or pinch to zoom toward the Event Horizon',
+                star: 'Click & drag to launch a Main-Sequence Star • Stars inside r < 2.85 Rₛ undergo Tidal Spaghettification!',
+                photon: 'Click & drag to fire a Relativistic Photon Beam • Aim near r = 1.5 Rₛ to trap light in the Photon Sphere!',
+                matter: 'Click to drop a test mass into a Keplerian orbit, or drag to customize its initial velocity vector'
+            };
+
+            document.querySelectorAll('.mode-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    state.mode = btn.dataset.mode;
+                    document.getElementById('modeHint').innerHTML = `
+                        <span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                        <span>${modeHints[state.mode]}</span>
+                    `;
+                    overlayCanvas.style.cursor = state.mode === 'camera' ? 'grab' : 'crosshair';
+                });
+            });
+
+            // Sliders
+            const bindSlider = (id, valId, prop, formatter) => {
+                const el = document.getElementById(id);
+                const valEl = document.getElementById(valId);
+                el.addEventListener('input', () => {
+                    const v = parseFloat(el.value);
+                    state[prop] = v;
+                    valEl.textContent = formatter(v);
+                });
+            };
+
+            bindSlider('sliderMass', 'valMass', 'rs', v => `${v.toFixed(2)} M₀`);
+            bindSlider('sliderSpin', 'valSpin', 'spin', v => `${v.toFixed(2)} c`);
+            bindSlider('sliderDoppler', 'valDoppler', 'doppler', v => v.toFixed(2));
+            bindSlider('sliderDisk', 'valDisk', 'diskIntensity', v => v.toFixed(2));
+            bindSlider('sliderLensing', 'valLensing', 'lensing', v => `${v.toFixed(2)}x`);
+            bindSlider('sliderJets', 'valJets', 'jetIntensity', v => v.toFixed(2));
+
+            // Palette Buttons
+            document.querySelectorAll('.palette-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    document.querySelectorAll('.palette-btn').forEach(b => {
+                        b.className = 'palette-btn px-2 py-1.5 rounded-xl bg-white/5 border border-white/10 text-[11px] text-slate-300 font-medium';
+                    });
+                    btn.className = 'palette-btn px-2 py-1.5 rounded-xl bg-amber-500/20 border border-amber-400/60 text-[11px] text-amber-200 font-medium';
+                    state.palette = parseInt(btn.dataset.palette, 10);
+                    uniforms.uPalette.value = state.palette;
+                });
+            });
+
+            // Camera Vantage Presets
+            document.querySelectorAll('.preset-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const p = btn.dataset.preset;
+                    if (p === 'gargantua') {
+                        state.targetRadius = 17.5 * state.rs;
+                        state.targetPhi = 1.43; // ~8 deg above disk plane
+                        state.targetTheta = 0.65;
+                    } else if (p === 'edge') {
+                        state.targetRadius = 19.0 * state.rs;
+                        state.targetPhi = 1.545; // Almost razor edge-on
+                        state.targetTheta = 1.2;
+                    } else if (p === 'polar') {
+                        state.targetRadius = 21.0 * state.rs;
+                        state.targetPhi = 0.12; // Looking straight down the spin axis
+                    } else if (p === 'horizon') {
+                        state.targetRadius = 4.2 * state.rs;
+                        state.targetPhi = 1.36;
+                        showEventToast('Warning: Extreme Gravitational Time Dilation Near Photon Sphere!');
+                    }
+                });
+            });
+
+            // Checkboxes & Action Buttons
+            document.getElementById('chkGuides').addEventListener('change', (e) => {
+                state.showGuides = e.target.checked;
+            });
+            document.getElementById('chkAutoOrbit').addEventListener('change', (e) => {
+                state.autoOrbit = e.target.checked;
+            });
+            document.getElementById('btnSpawnSwarm').addEventListener('click', injectParticleSwarm);
+            document.getElementById('btnClearMatter').addEventListener('click', () => {
+                state.entities = [];
+                showEventToast('Cleared All Orbiting Matter & Geodesic Trails');
+            });
+
+            // Drawer Toggle
+            const drawer = document.getElementById('controlDrawer');
+            let drawerOpen = true;
+            function toggleDrawer() {
+                drawerOpen = !drawerOpen;
+                drawer.style.transform = drawerOpen ? 'translateX(0)' : 'translateX(calc(100% + 1.5rem))';
+            }
+            document.getElementById('toggleDrawerBtn').addEventListener('click', toggleDrawer);
+            document.getElementById('closeDrawerBtn').addEventListener('click', toggleDrawer);
+
+            // Audio Toggle
+            document.getElementById('audioToggleBtn').addEventListener('click', () => {
+                initAudio();
+                isAudioEnabled = !isAudioEnabled;
+                if (audioCtx && audioCtx.state === 'suspended') {
+                    audioCtx.resume();
+                }
+                document.getElementById('audioIconOff').classList.toggle('hidden', isAudioEnabled);
+                document.getElementById('audioIconOn').classList.toggle('hidden', !isAudioEnabled);
+                document.getElementById('audioLabel').textContent = isAudioEnabled ? 'Audio On' : 'Audio Off';
+                if (droneGain && audioCtx) {
+                    droneGain.gain.setTargetAtTime(isAudioEnabled ? 0.08 : 0.0001, audioCtx.currentTime, 0.2);
+                }
+            });
+
+            // ---------------------------------------------------------------------
+            // 8. MAIN ANIMATION & RELATIVISTIC TELEMETRY LOOP
+            // ---------------------------------------------------------------------
+            spawnInitialSwarm();
+            let lastTime = performance.now();
+
+            function animate(now) {
+                requestAnimationFrame(animate);
+                const dt = Math.min((now - lastTime) * 0.001, 0.05);
+                lastTime = now;
+
+                if (state.autoOrbit && !state.isDragging) {
+                    state.targetTheta += dt * 0.18;
+                }
+
+                // Smoothly damp camera spherical coordinates
+                state.camRadius += (state.targetRadius - state.camRadius) * 0.1;
+                state.camTheta += (state.targetTheta - state.camTheta) * 0.12;
+                state.camPhi += (state.targetPhi - state.camPhi) * 0.12;
+
+                // Convert spherical (camRadius, camTheta, camPhi) to 3D Cartesian
+                const sinPhi = Math.sin(state.camPhi);
+                const camX = state.camRadius * sinPhi * Math.cos(state.camTheta);
+                const camY = state.camRadius * Math.cos(state.camPhi);
+                const camZ = state.camRadius * sinPhi * Math.sin(state.camTheta);
+
+                projCam.position.set(camX, camY, camZ);
+                projCam.lookAt(0, 0, 0);
+                projCam.updateMatrixWorld();
+
+                // Extract orthonormal camera basis vectors for the GLSL Raymarcher
+                const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(projCam.quaternion).normalize();
+                const right = new THREE.Vector3(1, 0, 0).applyQuaternion(projCam.quaternion).normalize();
+                const up = new THREE.Vector3(0, 1, 0).applyQuaternion(projCam.quaternion).normalize();
+
+                // Update Shader Uniforms
+                uniforms.uTime.value = now * 0.001;
+                uniforms.uCamPos.value.copy(projCam.position);
+                uniforms.uCamForward.value.copy(forward);
+                uniforms.uCamRight.value.copy(right);
+                uniforms.uCamUp.value.copy(up);
+                uniforms.uRs.value = state.rs;
+                uniforms.uSpin.value = state.spin;
+                uniforms.uDoppler.value = state.doppler;
+                uniforms.uDiskIntensity.value = state.diskIntensity;
+                uniforms.uLensing.value = state.lensing;
+                uniforms.uJetIntensity.value = state.jetIntensity;
+
+                // Update Relativistic Telemetry Readouts
+                const ratioRs = Math.max(1.01, state.camRadius / state.rs);
+                // Gravitational time dilation factor gamma = 1 / sqrt(1 - Rs / r)
+                const timeDilation = 1.0 / Math.sqrt(Math.max(0.01, 1.0 - 1.0 / ratioRs));
+                // Local escape velocity v_esc / c = sqrt(Rs / r)
+                const escapeVel = Math.min(0.999, Math.sqrt(1.0 / ratioRs));
+
+                document.getElementById('telDistance').textContent = `${ratioRs.toFixed(1)} Rₛ`;
+                document.getElementById('telTimeDilation').textContent = `${timeDilation.toFixed(3)}x`;
+                document.getElementById('telEscapeVel').textContent = `${escapeVel.toFixed(3)} c`;
+                document.getElementById('telParticles').textContent = `${state.entities.length} Active`;
+
+                // Modulate Synthesizer Drone Frequency based on observer proximity to Event Horizon
+                if (isAudioEnabled && audioCtx && filterNode) {
+                    const proximityBoost = Math.min(1.0, 6.0 / ratioRs);
+                    filterNode.frequency.setTargetAtTime(110 + proximityBoost * 280, audioCtx.currentTime, 0.1);
+                    droneOsc1.frequency.setTargetAtTime(48 + proximityBoost * 24, audioCtx.currentTime, 0.1);
+                }
+
+                // Step Relativistic N-Body Geodesics & Render WebGL + Overlay
+                updatePhysics(dt);
+                renderer.render(scene, orthoCam);
+                renderOverlay();
+            }
+
+            requestAnimationFrame(animate);
+        };
+    </script>
+</body>
+</html>
